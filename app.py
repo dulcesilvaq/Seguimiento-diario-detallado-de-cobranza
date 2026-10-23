@@ -131,11 +131,11 @@ if res:
     with t1:
         v = r.res_mes.copy()
         v.index = [i.strftime("%d/%m/%Y") if isinstance(i, pd.Timestamp) else i for i in v.index]
-        st.dataframe(v.style.format("{:,.0f}", na_rep=""), width="stretch")
+        st.dataframe(v.style.format("{:.0f}", na_rep=""), width="stretch")
     with t2:
         hoja = st.selectbox("Asesora", list(r.vistas))
         for clave, titulo in (("monto", "Monto (suma de Real Pago Dolar) por PERIODO"),
                               ("cuotas", "Numero de cuotas por PERIODO")):
             st.markdown(f"**{titulo}**")
-            st.dataframe(r.vistas[hoja][clave].style.format("{:,.0f}"), width="stretch")
+            st.dataframe(r.vistas[hoja][clave].style.format("{:.0f}"), width="stretch")
         st.caption("La Tabla 1 (por día) está en la hoja de cada asesora del Excel.")
