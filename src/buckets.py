@@ -1,0 +1,126 @@
+"""Lógica de agrupación: columnas por Fecha Vencimiento y filas por PERIODO.
+
+Regla clave (confirmada con el usuario):
+  * ADELANTO        = vencimiento >= 1er día del mes siguiente al mes actual.
+  * ADELANTO CIERRE = vencimiento >= día siguiente al cierre de ATC.
+    Es un SUBCONJUNTO de Adelanto, por eso NO se suma en el Total general.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+
+MESES = ["ene", "feb", "mar", "abr", "may", "jun",
+         "jul", "ago", "sept", "oct", "nov", "dic"]
+
+ANT, ADEL, CIERRE, TOTAL = "ANT", "ADEL", "CIERRE", "TOTAL"
+
+
+@dataclass(frozen=True)
+class Params:
+    anio: int
+    mes: int
+    fecha_cierre: date     # último día en que ATC recibe pagos del ciclo
+    anio_inicio: int
+    periodo_anteriores: int
+    adelanto_desde: date   # primer día de Adelanto
+    cierre_desde: date     # primer día de Adelanto Cierre
+
+
+@dataclass(frozen=True)
+class Columna:
+    key: str
+    label: str
+    estilo: str  # anio | mes | adelanto | cierre | total
+
+
+def _leer_fecha(valor, campo: str) -> date:
+    """Acepta fecha de Excel/YAML (2026-11-05), texto '2026-11-05' o '05/11/2026'."""
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(str(valor).strip(), fmt).date()
+        except ValueError:
+            pass
+    raise ValueError(f"config.yaml: '{campo}' debe ser una fecha (ej. 2026-11-05 o 05/11/2026)")
+
+
+def params_desde_config(cfg: dict) -> Params:
+    try:
+        anio, mes = (int(x) for x in str(cfg["mes_actual"]).split("-"))
+    except Exception as e:
+        raise ValueError("config.yaml: 'mes_actual' debe tener formato AAAA-MM (ej. 2026-10)") from e
+    if not 1 <= mes <= 12:
+        raise ValueError("config.yaml: el mes de 'mes_actual' debe estar entre 01 y 12")
+
+    fecha_cierre = _leer_fecha(cfg["fecha_cierre"], "fecha_cierre")
+    a_sig, m_sig = (anio + 1, 1) if mes == 12 else (anio, mes + 1)
+    adelanto_desde = date(a_sig, m_sig, 1)
+    if fecha_cierre < adelanto_desde:
+        raise ValueError(
+            f"config.yaml: 'fecha_cierre' ({fecha_cierre:%d/%m/%Y}) debe ser posterior al fin de "
+            f"'mes_actual' (>= {adelanto_desde:%d/%m/%Y})"
+        )
+
+    return Params(
+        anio=anio, mes=mes, fecha_cierre=fecha_cierre,
+        anio_inicio=int(cfg["anio_inicio_columnas"]),
+        periodo_anteriores=int(cfg["periodo_anteriores"]),
+        adelanto_desde=adelanto_desde,
+        cierre_desde=fecha_cierre + timedelta(days=1),
+    )
+
+
+def columnas(p: Params) -> list[Columna]:
+    """Columnas de las tablas, de izquierda a derecha."""
+    cols = [Columna(ANT, "Anteriores", "anio")]
+    for y in range(p.anio_inicio, p.anio):
+        cols.append(Columna(str(y), str(y), "anio"))
+    for m in range(1, p.mes + 1):
+        cols.append(Columna(f"{p.anio}-{m:02d}", f"{MESES[m-1]}-{str(p.anio)[2:]}", "mes"))
+    cols.append(Columna(ADEL, "Adelanto", "adelanto"))
+    cols.append(Columna(CIERRE, "Adelanto Cierre", "cierre"))
+    cols.append(Columna(TOTAL, "Total general", "total"))
+    return cols
+
+
+def clave_vencimiento(d: date, p: Params) -> str:
+    """Columna (única) a la que pertenece una Fecha Vencimiento."""
+    if d >= p.adelanto_desde:
+        return ADEL
+    if d.year < p.anio_inicio:
+        return ANT
+    if d.year < p.anio:
+        return str(d.year)
+    return f"{d.year}-{d.month:02d}"
+
+
+def es_cierre(d: date, p: Params) -> bool:
+    return d >= p.cierre_desde
+
+
+def clave_periodo(periodo: int, p: Params):
+    return ANT if periodo <= p.periodo_anteriores else int(periodo)
+
+
+def etiqueta_periodo(k) -> str:
+    return "Anteriores" if k == ANT else str(k)
+
+
+def clasificar(df, p: Params):
+    """Agrega columnas auxiliares: col_venc, es_cierre, per_key."""
+    out = df.copy()
+    fechas = out["Fecha Vencimiento Actual"].dt.date
+    out["col_venc"] = fechas.map(lambda d: clave_vencimiento(d, p))
+    out["es_cierre"] = fechas.map(lambda d: es_cierre(d, p))
+    out["per_key"] = out["PERIODO"].map(lambda x: clave_periodo(int(x), p))
+    return out
+
+
+def descripcion_ciclo(p: Params) -> str:
+    return (f"Adelanto = vencimiento desde {p.adelanto_desde:%d/%m/%Y}. "
+            f"Adelanto Cierre = vencimiento desde {p.cierre_desde:%d/%m/%Y} "
+            f"(cierre ATC: {p.fecha_cierre:%d/%m/%Y}); es parte de Adelanto y NO se suma al Total general.")
