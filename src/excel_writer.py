@@ -58,7 +58,7 @@ def escribir_res_mes(wb: Workbook, tabla: pd.DataFrame) -> None:
         c0.alignment = Alignment(horizontal="left")
         for j, v in enumerate(fila, start=2):
             c = ws.cell(i, j, _num(v))
-            c.number_format = "#,##0"
+            c.number_format = "0"
         for j in range(1, len(tabla.columns) + 2):
             c = ws.cell(i, j)
             c.font = Font(name=F, size=10, bold=es_total or j == len(tabla.columns) + 1)
@@ -93,7 +93,7 @@ def _encabezado(ws, fila: int, cols: list[Columna], etiqueta: str) -> None:
 def _fila_valores(ws, fila: int, serie: pd.Series, cols: list[Columna], negrita=False, relleno=None) -> None:
     for k, col in enumerate(cols, start=3):
         c = ws.cell(fila, k, _num(serie[col.key]))
-        c.number_format = "#,##0"
+        c.number_format = "0"
         c.font = Font(name=F, size=10, bold=negrita or col.key == TOTAL)
         c.border = BORDE
         c.alignment = Alignment(horizontal="right")
