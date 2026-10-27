@@ -29,7 +29,11 @@ def cargar_base(ruta, hojas_posibles: list[str], advertencias: list[str]) -> pd.
     df["Real Pago Dolar"] = pd.to_numeric(df["Real Pago Dolar"], errors="coerce")
     for c in ("Fecha Pago", "Fecha Vencimiento Actual"):
         df[c] = pd.to_datetime(df[c], errors="coerce", dayfirst=True).dt.normalize()
+    # PERIODO: el texto "Anteriores" (como viene en algunas bases) equivale al grupo Anteriores (<= 2019)
+    per_raw = df["PERIODO"].copy()
+    es_ant = df["PERIODO"].astype("string").str.strip().str.lower().str.startswith("anterior", na=False)
     df["PERIODO"] = pd.to_numeric(df["PERIODO"], errors="coerce")
+    df.loc[es_ant, "PERIODO"] = 0
     df["Coordinadora Cobranza"] = df["Coordinadora Cobranza"].astype("string").str.strip()
 
     # Solo pagos reales (> 0)
@@ -40,15 +44,19 @@ def cargar_base(ruta, hojas_posibles: list[str], advertencias: list[str]) -> pd.
         .isna().any(axis=1)
     )
     if incompletas.any():
-        advertencias.append(
-            f"{int(incompletas.sum())} fila(s) con pago > 0 pero sin Fecha Pago / Fecha Vencimiento / "
-            f"PERIODO / Coordinadora: se excluyeron (revisa la base)."
-        )
+        cols = ["Fecha Pago", "Fecha Vencimiento Actual", "PERIODO", "Coordinadora Cobranza"]
+        det = {c: int(df.loc[incompletas, c].isna().sum()) for c in cols if df.loc[incompletas, c].isna().any()}
+        raros = per_raw[incompletas & df["PERIODO"].isna()].dropna().astype(str).unique()[:5]
+        extra = f" Valores de PERIODO no reconocidos: {list(raros)}." if len(raros) else ""
+        adv.append(f"{int(incompletas.sum())} fila(s) con pago > 0 pero con datos vacíos o no reconocidos "
+                   f"{det}: se excluyeron (revisa la base).{extra}")
     df = df[~sin_pago & ~incompletas].copy()
     excl = n0 - len(df) - int(incompletas.sum())
     if excl:
         advertencias.append(f"{excl} fila(s) con Real Pago Dolar vacío o <= 0: no se cuentan.")
 
+    if df.empty:
+        raise ValueError("La base no tiene pagos con 'Real Pago Dolar' mayor a 0 (revisa la hoja y las columnas).")
     df["PERIODO"] = df["PERIODO"].astype(int)
     df["Coordinadora Cobranza"] = df["Coordinadora Cobranza"].astype(str)
     return df.reset_index(drop=True)
