@@ -2,7 +2,10 @@
 
 Regla clave (confirmada con el usuario):
   * ADELANTO        = vencimiento >= 1er día del mes siguiente al mes actual.
-  * ADELANTO CIERRE = vencimiento >= día siguiente al cierre de ATC.
+  * ADELANTO CIERRE = Adelanto con vencimiento DESPUÉS de la fecha de cierre (ej. desde el 06/11),
+    MÁS los que vencen entre el día 1 y la fecha de cierre (01/11 al 05/11) pero se pagaron
+    en un mes ANTERIOR al del vencimiento (ej. pago en octubre).
+    NO entran los que vencen del 01/11 al 05/11 y se pagaron en noviembre.
     Es un SUBCONJUNTO de Adelanto, por eso NO se suma en el Total general.
 """
 from __future__ import annotations
@@ -20,11 +23,11 @@ ANT, ADEL, CIERRE, TOTAL = "ANT", "ADEL", "CIERRE", "TOTAL"
 class Params:
     anio: int
     mes: int
-    fecha_cierre: date     # último día en que ATC recibe pagos del ciclo
     anio_inicio: int
     periodo_anteriores: int
+    fecha_cierre: date     # último día en que ATC recibe pagos del ciclo (ej. 05/11)
     adelanto_desde: date   # primer día de Adelanto
-    cierre_desde: date     # primer día de Adelanto Cierre
+    cierre_desde: date     # día siguiente al cierre (ej. 06/11)
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,8 @@ def params_desde_config(cfg: dict) -> Params:
     if not 1 <= mes <= 12:
         raise ValueError("config.yaml: el mes de 'mes_actual' debe estar entre 01 y 12")
 
+    if cfg.get("fecha_cierre") in (None, ""):
+        raise ValueError("config.yaml: falta 'fecha_cierre' (ej. \"2026-11-05\")")
     fecha_cierre = _leer_fecha(cfg["fecha_cierre"], "fecha_cierre")
     a_sig, m_sig = (anio + 1, 1) if mes == 12 else (anio, mes + 1)
     adelanto_desde = date(a_sig, m_sig, 1)
@@ -98,8 +103,18 @@ def clave_vencimiento(d: date, p: Params) -> str:
     return f"{d.year}-{d.month:02d}"
 
 
-def es_cierre(d: date, p: Params) -> bool:
-    return d >= p.cierre_desde
+def es_cierre(venc: date, pago: date, p: Params) -> bool:
+    """Adelanto Cierre.
+
+    * Vence después de la fecha de cierre (desde el 06/11): entra siempre.
+    * Vence del 01/11 a la fecha de cierre (01/11-05/11): entra solo si se pagó en un mes
+      ANTERIOR al del vencimiento (ej. pago en octubre). Pagadas en noviembre: no entran.
+    """
+    if venc < p.adelanto_desde:
+        return False
+    if venc >= p.cierre_desde:
+        return True
+    return (pago.year, pago.month) < (venc.year, venc.month)
 
 
 def clave_periodo(periodo: int, p: Params):
@@ -114,13 +129,17 @@ def clasificar(df, p: Params):
     """Agrega columnas auxiliares: col_venc, es_cierre, per_key."""
     out = df.copy()
     fechas = out["Fecha Vencimiento Actual"].dt.date
+    pagos = out["Fecha Pago"].dt.date
     out["col_venc"] = fechas.map(lambda d: clave_vencimiento(d, p))
-    out["es_cierre"] = fechas.map(lambda d: es_cierre(d, p))
+    out["es_cierre"] = [es_cierre(v, g, p) for v, g in zip(fechas, pagos)]
     out["per_key"] = out["PERIODO"].map(lambda x: clave_periodo(int(x), p))
     return out
 
 
 def descripcion_ciclo(p: Params) -> str:
     return (f"Adelanto = vencimiento desde {p.adelanto_desde:%d/%m/%Y}. "
-            f"Adelanto Cierre = vencimiento desde {p.cierre_desde:%d/%m/%Y} "
-            f"(cierre ATC: {p.fecha_cierre:%d/%m/%Y}); es parte de Adelanto y NO se suma al Total general.")
+            f"Adelanto Cierre = Adelanto con vencimiento desde {p.cierre_desde:%d/%m/%Y} (cierre ATC: "
+            f"{p.fecha_cierre:%d/%m/%Y}), más los que vencen del {p.adelanto_desde:%d/%m} al "
+            f"{p.fecha_cierre:%d/%m} pagados en un mes anterior al del vencimiento. "
+            f"Los que vencen del {p.adelanto_desde:%d/%m} al {p.fecha_cierre:%d/%m} y se pagaron "
+            f"en el mismo mes NO entran. Adelanto Cierre NO se suma al Total general.")
