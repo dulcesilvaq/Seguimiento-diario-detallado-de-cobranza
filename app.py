@@ -38,13 +38,12 @@ mes = c2.selectbox("Mes actual", range(1, 13), index=m0 - 1, format_func=lambda 
 
 # Cierre por defecto: el de la config si es el mismo mes; si no, el mismo día del mes siguiente
 a_sig, m_sig = (anio + 1, 1) if mes == 12 else (anio, mes + 1)
-cierre_cfg = buckets._leer_fecha(CFG["fecha_cierre"], "fecha_cierre")
-if (anio, mes) == (a0, m0):
-    cierre_def = cierre_cfg
-else:
-    cierre_def = date(a_sig, m_sig, min(cierre_cfg.day, 28))
-fecha_cierre = c3.date_input("Fecha de cierre (Adelanto Cierre = después de esta fecha)",
-                             value=cierre_def, format="DD/MM/YYYY", key=f"cierre_{anio}_{mes}")
+cierre_cfg = buckets._leer_fecha(CFG.get("fecha_cierre") or f"{a0 + (m0 == 12)}-{m0 % 12 + 1:02d}-05", "fecha_cierre")
+cierre_def = cierre_cfg if (anio, mes) == (a0, m0) else date(a_sig, m_sig, min(cierre_cfg.day, 28))
+fecha_cierre = c3.date_input("Fecha de cierre ATC", value=cierre_def, format="DD/MM/YYYY",
+                             key=f"cierre_{anio}_{mes}",
+                             help="Adelanto Cierre = vencen después de esta fecha, más los que vencen del 1 hasta "
+                                  "esta fecha pero se pagaron en un mes anterior.")
 tabla1_hasta = c4.number_input("Tabla 1 hasta el día (del mes siguiente)", 1, 28,
                                int(CFG["tabla1_hasta_dia"]), step=1)
 
@@ -96,10 +95,9 @@ if st.button("▶ Generar reporte", type="primary", disabled=archivo is None):
                 r = generar(archivo, cfg)
                 buf = io.BytesIO()
                 r.libro.save(buf)
-            cfg_yaml = {**cfg, "fecha_cierre": fecha_cierre.isoformat()}
             st.session_state["resultado"] = {
                 "r": r, "excel": buf.getvalue(), "nombre": f"Reporte_cobranza_{anio}-{mes:02d}.xlsx",
-                "yaml": yaml.safe_dump(cfg_yaml, sort_keys=False, allow_unicode=True),
+                "yaml": yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True),
             }
         except ValueError as e:
             st.session_state.pop("resultado", None)
