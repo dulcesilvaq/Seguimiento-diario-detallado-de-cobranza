@@ -1,6 +1,8 @@
 """Construcción de las tablas (sin formato): RES MES y tablas por asesora."""
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 from .buckets import ADEL, ANT, CIERRE, TOTAL, Columna, Params, columnas
@@ -24,18 +26,46 @@ def dias_tabla1(p: Params, hasta_dia: int) -> pd.DatetimeIndex:
     return pd.date_range(inicio, fin, freq="D")
 
 
+def _hoja_unica(base: str, usadas: set[str]) -> str:
+    """Nombre de pestaña válido y único (Excel no distingue mayúsculas, máx. 31 caracteres)."""
+    limpio = re.sub(r"[\[\]:*?/\\]", "", base).strip()[:31] or "Hoja"
+    cand, k = limpio, 2
+    while cand.lower() in usadas:
+        suf = f" {k}"
+        cand, k = limpio[:31 - len(suf)] + suf, k + 1
+    usadas.add(cand.lower())
+    return cand
+
+
 def orden_asesoras(df: pd.DataFrame, cfg: dict, advertencias: list[str]) -> list[dict]:
-    """Asesoras en el orden de la config; las que no estén se agregan al final."""
-    lista = [dict(a) for a in cfg["asesoras"]]
-    conocidas = {a["nombre"] for a in lista}
-    nuevas = sorted(set(df["Coordinadora Cobranza"]) - conocidas)
-    for n in nuevas:
-        corto = n.split(",")[-1].strip().split(" ")[0] if "," in n else n.split(" ")[0]
-        advertencias.append(
-            f"Coordinadora NO está en config.yaml: '{n}'. Se agregó al final (hoja '{corto}'). "
-            f"Agrégala a 'asesoras' para controlar su posición."
-        )
-        lista.append({"nombre": n, "hoja": corto})
+    """Asesoras en el orden de la config.
+
+    * Las de la config que NO tienen pagos en esta base se omiten (se avisa).
+    * Las coordinadoras de la base que NO están en la config se agregan al final (se avisa),
+      con un nombre de hoja que no choque con ninguno existente.
+    """
+    todas = [dict(a) for a in cfg["asesoras"]]
+    hojas = [a["hoja"].lower() for a in todas]
+    if len(set(hojas)) != len(hojas):
+        raise ValueError("Hay nombres de hoja repetidos en la lista de asesoras.")
+    usadas = set(hojas) | {"res mes"}
+
+    presentes = set(df["Coordinadora Cobranza"])
+    sin_datos = [a["nombre"] for a in todas if a["nombre"] not in presentes]
+    lista = [a for a in todas if a["nombre"] in presentes]
+    if sin_datos:
+        advertencias.append("Asesoras de tu lista SIN pagos en esta base (no se generó su hoja ni su columna en "
+                            "RES MES): " + "; ".join(sin_datos) + ".")
+
+    conocidas = {a["nombre"] for a in todas}
+    for n in sorted(presentes - conocidas):
+        apellido, _, nombres = n.partition(",")
+        corto = (nombres or apellido).strip().split(" ")[0]
+        base = corto if corto.lower() not in usadas else f"{corto} {apellido.strip()[:1]}"
+        hoja = _hoja_unica(base, usadas)
+        advertencias.append(f"Coordinadora NO está en tu lista: '{n}'. Se agregó al final (hoja '{hoja}'). "
+                            f"Agrégala a la lista de asesoras para controlar su posición.")
+        lista.append({"nombre": n, "hoja": hoja})
     return lista
 
 
