@@ -12,8 +12,11 @@ hojas_base: ["BASE FINAL", "BASE"]
 mes_actual: "2026-10"
 
 # 2) FECHA DE CIERRE de ATC (AAAA-MM-DD o DD/MM/AAAA), ya en el mes siguiente.
-#    "Adelanto Cierre" = vencimientos DESPUÉS de esta fecha (si cierra el 5 -> desde el 6).
-#    Edítala cuando cambie: 2026-11-05, 2026-12-05, o 2026-12-07, etc.
+#    "Adelanto Cierre" incluye:
+#      - todo Adelanto que vence DESPUÉS de esta fecha (cierre 5 -> desde el 6), y
+#      - los que vencen del día 1 hasta esta fecha, pero SOLO si se pagaron en un mes
+#        anterior al del vencimiento (los pagados en el mismo mes NO entran).
+#    Edítala cuando cambie: "2026-11-05", "2026-12-05", "2026-12-07", etc.
 fecha_cierre: "2026-11-05"
 
 # 3) La Tabla 1 de cada asesora va del 01 del mes actual hasta este día del mes
