@@ -10,6 +10,14 @@ from . import buckets, loader, tables
 from .excel_writer import escribir_hoja_asesora, escribir_res_mes
 
 
+def _ciclo_sugerido(df: pd.DataFrame) -> pd.Period:
+    """Mes del ciclo al que parecen pertenecer los pagos (el ciclo va de ~6 a ~5 del mes siguiente).
+    Se usan los pagos con día >= 8, que pertenecen sin duda a ese mes."""
+    d = df["Fecha Pago"]
+    base = d[d.dt.day >= 8]
+    return (base if len(base) else d).dt.to_period("M").mode().iloc[0]
+
+
 @dataclass
 class Resultado:
     libro: Workbook
@@ -37,7 +45,15 @@ def generar(entrada, cfg: dict, solo: list[str] | None = None) -> Resultado:
     dias_base = tables.dias_del_rango(df)                        # RES MES
     dias = tables.dias_tabla1(p, int(cfg["tabla1_hasta_dia"]))   # Tabla 1 de cada asesora
     fuera = df[(df["Fecha Pago"] < dias[0]) | (df["Fecha Pago"] > dias[-1])]
-    if len(fuera):
+    sug = _ciclo_sugerido(df)
+    if (sug.year, sug.month) != (p.anio, p.mes):
+        sig = sug + 1
+        adv.insert(0, (
+            f"REVISA EL CICLO: los pagos de la base van del {df['Fecha Pago'].min():%d/%m/%Y} al "
+            f"{df['Fecha Pago'].max():%d/%m/%Y} y parecen del ciclo de {sug.year}-{sug.month:02d}, pero el mes "
+            f"actual está en {p.anio}-{p.mes:02d}. Pon mes actual = {sug.year}-{sug.month:02d} y la fecha de "
+            f"cierre en el mes siguiente (ej. 05/{sig.month:02d}/{sig.year})."))
+    elif len(fuera):
         adv.append(f"{len(fuera)} pago(s) con Fecha Pago fuera de {dias[0]:%d/%m/%Y}-{dias[-1]:%d/%m/%Y}: "
                    f"no salen en la Tabla 1 (sí en RES MES y tablas 2 y 3). Revisa el mes actual.")
     if (p.fecha_cierre.year, p.fecha_cierre.month) != (p.adelanto_desde.year, p.adelanto_desde.month):
