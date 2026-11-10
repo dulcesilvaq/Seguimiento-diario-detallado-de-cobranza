@@ -13,6 +13,7 @@ import streamlit as st
 import yaml
 
 from src import buckets
+from src.loader import listar_coordinadoras
 from src.pipeline import generar
 
 MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -67,6 +68,25 @@ base_ases = pd.DataFrame({
 editado = st.data_editor(base_ases, num_rows="dynamic", width="stretch", hide_index=True,
                          column_config={ORDEN_COL: st.column_config.NumberColumn(ORDEN_COL, step=1, width="small")})
 
+# ------------------------------------------------------------------ Unir asesoras
+with st.expander("Unir asesoras (sumar la cartera de una asesora a la de otra)"):
+    st.caption("Ej.: si una asesora se fue y su cartera pasó a otras, elige quién se une y a la cartera de quién. "
+               "La asesora destino debe estar en la tabla de arriba.")
+    try:
+        nombres_base = listar_coordinadoras(archivo, CFG["hojas_base"]) if archivo is not None else []
+    except Exception:  # noqa: BLE001
+        nombres_base = []
+    destinos = sorted({n.strip() for n in editado[NOMBRE_COL].dropna()} | set(nombres_base))
+    ini = [{"Se une": o, "A la cartera de": d} for o, d in (CFG.get("fusionar") or {}).items()]
+    fus_ini = pd.DataFrame(ini, columns=["Se une", "A la cartera de"])
+    fus_ed = st.data_editor(
+        fus_ini, num_rows="dynamic", width="stretch", hide_index=True, key="fusion_editor",
+        column_config={
+            "Se une": (st.column_config.SelectboxColumn("Se une", options=nombres_base)
+                       if nombres_base else st.column_config.TextColumn("Se une")),
+            "A la cartera de": st.column_config.SelectboxColumn("A la cartera de", options=destinos),
+        })
+
 # ------------------------------------------------------------------ Generar
 st.divider()
 if st.button("▶ Generar reporte", type="primary", disabled=archivo is None):
@@ -81,14 +101,16 @@ if st.button("▶ Generar reporte", type="primary", disabled=archivo is None):
         st.error("Agrega al menos una asesora.")
     elif len(set(hojas)) != len(hojas):
         st.error("Hay nombres de hoja repetidos. Cada asesora necesita un nombre de pestaña distinto.")
-    elif any(len(h) > 31 or any(ch in h for ch in '[]:*?/\\') or h == "RES MES" for h in hojas):
-        st.error("Nombre de hoja no válido (máx. 31 caracteres, sin [ ] : * ? / \\, y distinto de 'RES MES').")
+    elif any(len(h) > 31 or any(ch in h for ch in '[]:*?/\\') or h.upper() in ("RES MES", "DETALLE", "RESUMEN ADELANTOS") for h in hojas):
+        st.error("Nombre de hoja no válido (máx. 31 caracteres, sin [ ] : * ? / \\, y distinto de 'RES MES', 'RESUMEN ADELANTOS' y 'DETALLE').")
     else:
         cfg = {
             "hojas_base": CFG["hojas_base"], "mes_actual": f"{anio}-{mes:02d}",
             "fecha_cierre": fecha_cierre, "tabla1_hasta_dia": int(tabla1_hasta),
             "anio_inicio_columnas": int(anio_inicio), "periodo_anteriores": int(per_ant),
             "etiqueta_tabla": etiqueta, "asesoras": lista,
+            "fusionar": {o.strip(): d.strip() for o, d in zip(fus_ed["Se une"], fus_ed["A la cartera de"])
+                         if isinstance(o, str) and isinstance(d, str) and o.strip() and d.strip()},
         }
         try:
             with st.spinner("Calculando..."):
@@ -125,11 +147,15 @@ if res:
                        mime="text/yaml", help="Úsalo para reemplazar config.yaml en GitHub si quieres que "
                        "estos valores queden como los iniciales de la app (el archivo sale sin comentarios).")
 
-    t1, t2 = st.tabs(["RES MES", "Vista por asesora"])
+    t1, t3, t2 = st.tabs(["RES MES", "Resumen adelantos", "Vista por asesora"])
     with t1:
         v = r.res_mes.copy()
         v.index = [i.strftime("%d/%m/%Y") if isinstance(i, pd.Timestamp) else i for i in v.index]
         st.dataframe(v.style.format("{:.0f}", na_rep=""), width="stretch")
+    with t3:
+        st.dataframe(r.resumen.style.format("{:.0f}"), width="stretch")
+        st.caption("Montos en US$. Los 'Pagos vencidos' se clasifican solo por fecha de vencimiento; "
+                   "las dos columnas de vencimiento suman el Adelanto mes natural.")
     with t2:
         hoja = st.selectbox("Asesora", list(r.vistas))
         for clave, titulo in (("monto", "Monto (suma de Real Pago Dolar) por PERIODO"),

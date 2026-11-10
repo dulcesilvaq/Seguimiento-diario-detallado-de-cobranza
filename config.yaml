@@ -9,7 +9,7 @@ hojas_base: ["BASE FINAL", "BASE"]
 # 1) MES ACTUAL (AAAA-MM). Define hasta qué mes se muestran columnas y desde
 #    cuándo empieza "Adelanto" (= día 1 del mes siguiente).
 #    Ej.: en noviembre -> "2026-11"
-mes_actual: "2026-10"
+mes_actual: "2026-11"
 
 # 2) FECHA DE CIERRE de ATC (AAAA-MM-DD o DD/MM/AAAA), ya en el mes siguiente.
 #    "Adelanto Cierre" incluye:
@@ -17,7 +17,7 @@ mes_actual: "2026-10"
 #      - los que vencen del día 1 hasta esta fecha, pero SOLO si se pagaron en un mes
 #        anterior al del vencimiento (los pagados en el mismo mes NO entran).
 #    Edítala cuando cambie: "2026-11-05", "2026-12-05", "2026-12-07", etc.
-fecha_cierre: "2026-11-05"
+fecha_cierre: "2026-12-05"
 
 # 3) La Tabla 1 de cada asesora va del 01 del mes actual hasta este día del mes
 #    siguiente (9 -> 01/10 a 09/11). Solo es formato.
@@ -43,10 +43,21 @@ etiqueta_tabla: "1ra cuota al 06/08 USD"
 #    (así sale como encabezado en RES MES). "hoja" es el nombre corto de la pestaña.
 #    Para agregar o quitar una asesora, agrega o borra su línea.
 asesoras:
-  - { nombre: "Rojas Neyra, Katherine Milagros",     hoja: "Katherin" }
-  - { nombre: "Licona Manrique, Yamile Yadhira",     hoja: "Yamile" }
-  - { nombre: "Babilonia Begazo, Bhia Alejandra",    hoja: "Bhia" }
-  - { nombre: "Farfan Paucar, Elizabeth Beatriz",    hoja: "Elizabeth" }
-  - { nombre: "Carita Cruz, Meryluz Wendy",          hoja: "Meryluz" }
-  - { nombre: "Zeballos Bruna, Claudia Victoria",    hoja: "Claudia" }
-  - { nombre: "Cari Cruz, Ana Silvia",               hoja: "Ana" }
+  - { nombre: "Babilonia Begazo, Bhia Alejandra",        hoja: "Bhia" }
+  - { nombre: "Cari Cruz, Ana Silvia",                   hoja: "Ana" }
+  - { nombre: "Farfan Paucar, Elizabeth Beatriz",        hoja: "Elizabeth" }
+  - { nombre: "Flores Benavente, Angela Patricia Faith", hoja: "Angela" }
+  - { nombre: "Licona Manrique, Yamile Yadhira",         hoja: "Yamile" }
+  - { nombre: "Rojas Neyra, Katherine Milagros",         hoja: "Katherin" }
+  - { nombre: "Vallejos Cordova, Marisol Diana",         hoja: "Marisol" }
+
+# --- Unir asesoras -----------------------------------------------------------
+# 5) Suma los pagos de una asesora a la cartera de otra (ej. una asesora se fue y su
+#    cartera pasó a otras). Formato:  "nombre_origen": "nombre_destino"
+#    Los nombres deben ser IDÉNTICOS a los de la base. El destino debe estar en la lista
+#    de asesoras (así conserva su hoja y su posición). Déjalo vacío si no aplica.
+fusionar: {}
+#   Ejemplo:
+#   fusionar:
+#     "Flores Benavente, Angela Patricia Faith": "Carita Cruz, Meryluz Wendy"
+#     "Vallejos Cordova, Marisol Diana": "Carita Cruz, Meryluz Wendy"
